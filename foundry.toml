@@ -1,0 +1,33 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+remappings = [
+    "base-std/=lib/base-std/src/",
+    "forge-std/=lib/forge-std/src/",
+    "@uniswap/v4-core/=lib/v4-core/",
+    "@uniswap/v4-periphery/=lib/v4-periphery/",
+    "@openzeppelin/=lib/v4-core/lib/openzeppelin-contracts/",
+    "solmate/=lib/v4-core/lib/solmate/",
+]
+solc_version = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+bytecode_hash = "none"
+cbor_metadata = false
+ffi = false
+
+[profile.ci]
+fuzz = { runs = 1_000 }
+verbosity = 3
+
+# Requires Base Foundry v1.1.1. Stock Foundry does not implement B20 precompile dispatch.
+[profile.fork]
+fuzz = { runs = 10 }
+
+# Compiler is pinned. Dependency revisions are documented in the Ubuntu runbook;
+# Phase 1 sources intentionally compile without importing external packages.
