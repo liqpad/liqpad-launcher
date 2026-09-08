@@ -35,10 +35,10 @@ The factory does not start pools at 1:1.
 
 | Component | Address |
 | --- | --- |
-| Factory | `0x312107CE4E6A476edb5F243f456cBbf71356713F` |
-| Hook | `0x3056518d30315c2D6A55eB6FEB5c8F31Ee6D60cC` |
-| Fee router | `0x9e2c6D47Cea0F6BC63E4A6D6870f713adD5B5FFF` |
-| LP vault | `0xa7069F829e9a5790a3c030006faEF5d0006729cc` |
+| Factory | `0x38472ca56a93caa68459fd11fdd2eeb130d06b29` |
+| Hook | `0xC5a862dD09Df3585e0A5d3BC32AC4Fe7efE0A0cc` |
+| Fee router | `0x08a8cafefd4816451a18097372bb85153085270f` |
+| LP vault | `0x4ac4efaeda765e6350817caaf4000138b730ae31` |
 | DiemEngine | `0xd44BbD89d490B079ba546e192eb30CB1836F2958` |
 | Venice adapter | `0xBEa3A03c4A76fADdBD77458525a4E36eAE64d746` |
 | Owner Safe | `0x39F2d898A5C6CdD29ad26180c7b272FBE9E30d83` |
