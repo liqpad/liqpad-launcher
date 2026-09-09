@@ -20,13 +20,13 @@
 
 | Component | Address |
 | --- | --- |
-| LiqpadFactory | `0x38472ca56a93caa68459fd11fdd2eeb130d06b29` |
-| LiqpadLaunchHook | `0x3056518d30315c2D6A55eB6FEB5c8F31Ee6D60cC` |
-| FeeRouter | `0x08a8cafefd4816451a18097372bb85153085270f` |
+| LiqpadFactory | `0x7e22764f1A1CBB8B60A5Ca1D3bAed720A48AA3D2` |
+| LiqpadLaunchHook | `0x10F775c7F82e57577b47E6401DE31DFC9BADe0cC` |
+| FeeRouter | `0x1A1D815DbEADCc8cE783eD001f9733280F3E2e5e` |
 | DiemEngine | `0xd44BbD89d490B079ba546e192eb30CB1836F2958` |
 | VeniceAdapter | `0xBEa3A03c4A76fADdBD77458525a4E36eAE64d746` |
-| HookDeployer | `0x0bc5410936e2e77573e5d850f3ee78d6af8d27e7` |
-| LockedPositionVault | `0x4ac4efaeda765e6350817caaf4000138b730ae31` |
+| HookDeployer | `0xfe8b9fb2bb60df282dce8ebb4f397b4b70c7f132` |
+| LockedPositionVault | `0xAF8082B81Df88977B254342996cfe518F16477D6` |
 
 `INITIAL_OWNER`: `0x39F2d898A5C6CdD29ad26180c7b272FBE9E30d83`
 

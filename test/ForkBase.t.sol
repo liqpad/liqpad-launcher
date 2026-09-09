@@ -8,6 +8,7 @@ import {LiqpadFactory} from "../src/LiqpadFactory.sol";
 import {IVeniceStaking} from "../src/interfaces/IVeniceStaking.sol";
 import {IDiemMinter} from "../src/interfaces/IDiemMinter.sol";
 import {DeploySepolia} from "../script/DeploySepolia.s.sol";
+import {MockQuoteSigner} from "./mocks/MockQuoteSigner.sol";
 
 /// @notice Live precompile test. Run with Base Foundry and a Base fork URL; see the Ubuntu runbook.
 contract ForkBaseTest is Test {
@@ -46,7 +47,7 @@ contract ForkBaseTest is Test {
         if (!vm.envOr("LIVE_B20", false)) return;
         assertTrue(block.chainid == 8453 || block.chainid == 84532, "Base fork required");
 
-        LiqpadFactory factory = new LiqpadFactory();
+        LiqpadFactory factory = new LiqpadFactory(address(this), address(new MockQuoteSigner()));
         address creator = makeAddr("forkCreator");
         bytes32 salt = keccak256(abi.encode("liqpad-phase-2", address(factory), block.number));
         LiqpadFactory.LaunchParams memory params = LiqpadFactory.LaunchParams({
@@ -63,7 +64,13 @@ contract ForkBaseTest is Test {
 
         address predicted = factory.predictAddress(salt);
         vm.prank(creator);
-        address token = factory.createLaunch(params);
+        LiqpadFactory.LaunchQuote memory quote = LiqpadFactory.LaunchQuote({
+            quotedFrame: 144_800,
+            validUntil: uint64(block.timestamp + 10 minutes),
+            creator: creator,
+            launchSalt: salt
+        });
+        address token = factory.createLaunch(params, quote, "valid");
         IB20 b20 = IB20(token);
 
         assertEq(token, predicted);

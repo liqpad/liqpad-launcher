@@ -11,6 +11,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 interface ILiqpadLaunchHook {
     function registerLaunchPool(PoolKey calldata key, address token, address creator) external;
@@ -30,13 +32,18 @@ interface ILiqpadLiquidityLocker {
 /// @notice Permissionlessly creates fixed-supply, admin-less native B20 launches paired only with VVV.
 /// @dev A configured launch atomically creates the B20 through Base's factory precompile, initializes its
 ///      zero-LP-fee Uniswap v4 pool, locks the full launch inventory as single-sided liquidity, and records metadata.
-contract LiqpadFactory {
+contract LiqpadFactory is EIP712 {
     using PoolIdLibrary for PoolKey;
     uint256 public constant TOKEN_SUPPLY = 1_000_000_000e18;
     uint8 public constant TOKEN_DECIMALS = 18;
     uint16 public constant HOOK_FEE_BPS = 100;
     bytes32 public constant STUB_POOL_ID = bytes32(0);
     int24 public constant TICK_SPACING = 200;
+    int24 public constant MIN_QUOTED_FRAME = 80_000;
+    int24 public constant MAX_QUOTED_FRAME = 200_000;
+    bytes32 public constant LAUNCH_QUOTE_TYPEHASH = keccak256(
+        "LaunchQuote(int24 quotedFrame,uint64 validUntil,address creator,bytes32 launchSalt)"
+    );
 
     struct Socials {
         string twitter;
@@ -55,6 +62,13 @@ contract LiqpadFactory {
         string website;
         Socials socials;
         address creator;
+    }
+
+    struct LaunchQuote {
+        int24 quotedFrame;
+        uint64 validUntil;
+        address creator;
+        bytes32 launchSalt;
     }
 
     struct Profile {
@@ -78,9 +92,19 @@ contract LiqpadFactory {
     error OnlyConfigAdmin();
     error Phase3AlreadyConfigured();
     error InvalidPhase3Config();
+    error InvalidQuoteAdmin();
+    error InvalidQuoteSigner();
+    error OnlyQuoteAdmin();
+    error QuoteExpired();
+    error InvalidQuoteCreator();
+    error InvalidQuoteSalt();
+    error InvalidQuotedFrame();
+    error InvalidQuoteSignature();
 
     event Launch(address indexed token, address indexed creator, bytes32 indexed poolId, bytes32 profileHash);
+    event LaunchQuoteUsed(address indexed token, int24 quotedFrame, uint64 validUntil, bytes32 quoteDigest);
     event Phase3Configured(address indexed poolManager, address indexed hook, address indexed vvv);
+    event QuoteSignerUpdated(address indexed previousSigner, address indexed newSigner);
 
     mapping(address token => Profile profile) private _profiles;
     mapping(address creator => address[] tokens) private _creatorTokens;
@@ -88,12 +112,19 @@ contract LiqpadFactory {
 
     uint256 private _locked = 1;
     address public configAdmin = msg.sender;
+    address public immutable quoteAdmin;
+    address public quoteSigner;
     IPoolManager public poolManager;
     ILiqpadLaunchHook public launchHook;
     ILiqpadLiquidityLocker public liquidityLocker;
     address public VVV;
-    /// @notice Protocol-level VVV quote frame: B20 per 1 VVV expressed in Uniswap tick space.
-    int24 public quotedFrame;
+
+    constructor(address quoteAdmin_, address quoteSigner_) EIP712("LiqpadFactory", "1") {
+        if (quoteAdmin_ == address(0)) revert InvalidQuoteAdmin();
+        if (quoteSigner_ == address(0)) revert InvalidQuoteSigner();
+        quoteAdmin = quoteAdmin_;
+        quoteSigner = quoteSigner_;
+    }
 
     /// @notice One-shot deployment configuration; authority is burned immediately after use.
     function configurePhase3(
@@ -101,8 +132,7 @@ contract LiqpadFactory {
         ILiqpadLaunchHook hook,
         address vvv,
         IFeeRouterBinding router,
-        ILiqpadLiquidityLocker locker,
-        int24 quotedFrame_
+        ILiqpadLiquidityLocker locker
     ) external {
         if (msg.sender != configAdmin) revert OnlyConfigAdmin();
         if (address(poolManager) != address(0)) revert Phase3AlreadyConfigured();
@@ -112,18 +142,22 @@ contract LiqpadFactory {
         ) {
             revert InvalidPhase3Config();
         }
-        int24 maxTick = TickMath.maxUsableTick(TICK_SPACING);
-        if (quotedFrame_ <= 0 || quotedFrame_ % TICK_SPACING != 0 || quotedFrame_ >= maxTick) {
-            revert InvalidPhase3Config();
-        }
         poolManager = manager;
         launchHook = hook;
         liquidityLocker = locker;
         VVV = vvv;
-        quotedFrame = quotedFrame_;
         router.bindHook(address(hook));
         configAdmin = address(0);
         emit Phase3Configured(address(manager), address(hook), vvv);
+    }
+
+    /// @notice Rotates the limited-purpose signer used to authorize offline launch quotes.
+    function setQuoteSigner(address newSigner) external {
+        if (msg.sender != quoteAdmin) revert OnlyQuoteAdmin();
+        if (newSigner == address(0)) revert InvalidQuoteSigner();
+        address previousSigner = quoteSigner;
+        quoteSigner = newSigner;
+        emit QuoteSignerUpdated(previousSigner, newSigner);
     }
 
     modifier nonReentrant() {
@@ -144,29 +178,40 @@ contract LiqpadFactory {
     }
 
     /// @notice Returns the pool tick and single-sided B20 range for the token/VVV address ordering.
-    function ticksFor(address token) public view returns (int24 poolTick, int24 tickLower, int24 tickUpper) {
+    function ticksFor(address token, int24 frame)
+        public
+        view
+        returns (int24 poolTick, int24 tickLower, int24 tickUpper)
+    {
         int24 minTick = TickMath.minUsableTick(TICK_SPACING);
         int24 maxTick = TickMath.maxUsableTick(TICK_SPACING);
         if (VVV < token) {
-            poolTick = quotedFrame;
-            tickLower = poolTick;
-            tickUpper = maxTick;
-        } else {
-            poolTick = -quotedFrame;
+            // currency0 = VVV, currency1 = B20. A B20-only currency1 position is below the current price.
+            poolTick = frame;
             tickLower = minTick;
             tickUpper = poolTick;
+        } else {
+            // currency0 = B20, currency1 = VVV. A B20-only currency0 position is above the current price.
+            poolTick = -frame;
+            tickLower = poolTick;
+            tickUpper = maxTick;
         }
     }
 
     /// @notice Creates an admin-less B20, its B20/VVV pool, permanently locked LP, and its on-chain profile.
     /// @dev Production uses `StdPrecompiles.B20_FACTORY` (`0xB20f...0000`) with canonical base-std encodings.
     ///      The hook receives BURN_ROLE only; creator and factory retain no mint, pause, seize, or admin power.
-    function createLaunch(LaunchParams calldata params) external nonReentrant returns (address token) {
+    function createLaunch(LaunchParams calldata params, LaunchQuote calldata quote, bytes calldata signature)
+        external
+        nonReentrant
+        returns (address token)
+    {
         if (bytes(params.name).length == 0) revert EmptyName();
         if (bytes(params.symbol).length == 0) revert EmptySymbol();
         if (bytes(params.contractURI).length == 0) revert EmptyContractURI();
 
         address creator = params.creator == address(0) ? msg.sender : params.creator;
+        _validateQuote(quote, signature, creator, params.salt);
         address predicted = predictAddress(params.salt);
 
         bytes[] memory initCalls = new bytes[](3);
@@ -193,7 +238,7 @@ contract LiqpadFactory {
             (Currency currency0, Currency currency1) =
                 token < VVV ? (Currency.wrap(token), Currency.wrap(VVV)) : (Currency.wrap(VVV), Currency.wrap(token));
             PoolKey memory key = PoolKey(currency0, currency1, 0, TICK_SPACING, IHooks(address(launchHook)));
-            (int24 poolTick, int24 tickLower, int24 tickUpper) = ticksFor(token);
+            (int24 poolTick, int24 tickLower, int24 tickUpper) = ticksFor(token, quote.quotedFrame);
             launchHook.registerLaunchPool(key, token, creator);
             poolManager.initialize(key, TickMath.getSqrtPriceAtTick(poolTick));
             _safeTransfer(token, address(liquidityLocker), TOKEN_SUPPLY);
@@ -218,6 +263,21 @@ contract LiqpadFactory {
         _creatorTokens[creator].push(token);
         isLiqpadLaunch[token] = true;
         emit Launch(token, creator, launchPoolId, _profileHash(profile));
+        emit LaunchQuoteUsed(token, quote.quotedFrame, quote.validUntil, hashLaunchQuote(quote));
+    }
+
+    function hashLaunchQuote(LaunchQuote calldata quote) public view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    LAUNCH_QUOTE_TYPEHASH,
+                    quote.quotedFrame,
+                    quote.validUntil,
+                    quote.creator,
+                    quote.launchSalt
+                )
+            )
+        );
     }
 
     function getProfile(address token) external view returns (Profile memory) {
@@ -240,6 +300,24 @@ contract LiqpadFactory {
     function _safeTransfer(address token, address to, uint256 amount) private {
         (bool ok, bytes memory data) = token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
         require(ok && (data.length == 0 || abi.decode(data, (bool))), "B20_TRANSFER_FAILED");
+    }
+
+    function _validateQuote(
+        LaunchQuote calldata quote,
+        bytes calldata signature,
+        address creator,
+        bytes32 launchSalt
+    ) private view {
+        if (block.timestamp > quote.validUntil) revert QuoteExpired();
+        if (quote.creator != creator) revert InvalidQuoteCreator();
+        if (quote.launchSalt != launchSalt) revert InvalidQuoteSalt();
+        if (
+            quote.quotedFrame < MIN_QUOTED_FRAME || quote.quotedFrame > MAX_QUOTED_FRAME
+                || quote.quotedFrame % TICK_SPACING != 0
+        ) revert InvalidQuotedFrame();
+        if (!SignatureChecker.isValidSignatureNow(quoteSigner, hashLaunchQuote(quote), signature)) {
+            revert InvalidQuoteSignature();
+        }
     }
 
     function _profileHash(Profile memory profile) private pure returns (bytes32) {

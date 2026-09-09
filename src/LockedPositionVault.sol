@@ -70,16 +70,9 @@ contract LockedPositionVault is IERC721Receiver {
         liquidity = tokenIs0
             ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, amount)
             : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, amount);
-        encoded = abi.encode(
-            key,
-            tickLower,
-            tickUpper,
-            liquidity,
-            tokenIs0 ? uint128(amount) : uint128(0),
-            tokenIs0 ? uint128(0) : uint128(amount),
-            address(this),
-            bytes("")
-        );
+        uint128 amount0Max = tokenIs0 ? uint128(amount) : uint128(0);
+        uint128 amount1Max = tokenIs0 ? uint128(0) : uint128(amount);
+        encoded = abi.encode(key, tickLower, tickUpper, liquidity, amount0Max, amount1Max, address(this), bytes(""));
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) external view returns (bytes4) {

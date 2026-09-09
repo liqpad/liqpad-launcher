@@ -4,11 +4,11 @@
 
 | Role | Address | Status |
 | --- | --- | --- |
-| LiqpadFactory | `0x312107CE4E6A476edb5F243f456cBbf71356713F` | Live. `quotedFrame = 115200`. `configAdmin` burned. |
-| LiqpadLaunchHook | `0x3056518d30315c2D6A55eB6FEB5c8F31Ee6D60cC` | Live. CREATE2 salt `0x…8366`. |
-| FeeRouter | `0x9e2c6D47Cea0F6BC63E4A6D6870f713adD5B5FFF` | Live. Immutable engine. |
+| LiqpadFactory | `0x7e22764f1A1CBB8B60A5Ca1D3bAed720A48AA3D2` | Live. `quotedFrame = 146400`. `configAdmin` burned. |
+| LiqpadLaunchHook | `0x10F775c7F82e57577b47E6401DE31DFC9BADe0cC` | Live. CREATE2 salt `0x…8366`. |
+| FeeRouter | `0x1A1D815DbEADCc8cE783eD001f9733280F3E2e5e` | Live. Immutable engine. |
 | LockedPositionVault | `0xa7069F829e9a5790a3c030006faEF5d0006729cc` | Live. Factory-only locker. |
-| HookDeployer | `0xf8FE8D707f9E555A1DBDDcF9C1bb8d791ecD9Ac5` | Live. |
+| HookDeployer | `0xfe8b9fb2bb60df282dce8ebb4f397b4b70c7f132` | Live. |
 | DiemEngine | `0xd44BbD89d490B079ba546e192eb30CB1836F2958` | Live. |
 | VeniceAdapter | `0xBEa3A03c4A76fADdBD77458525a4E36eAE64d746` | Live. |
 | INITIAL_OWNER | `0x39F2d898A5C6CdD29ad26180c7b272FBE9E30d83` | Base Safe. |

@@ -7,6 +7,7 @@ import {LiqpadFactory} from "../src/LiqpadFactory.sol";
 import {MockB20} from "./mocks/MockB20.sol";
 import {MockB20Factory} from "./mocks/MockB20Factory.sol";
 import {TestableLiqpadFactory} from "./mocks/TestableLiqpadFactory.sol";
+import {MockQuoteSigner} from "./mocks/MockQuoteSigner.sol";
 
 contract LaunchTest is Test {
     event Launch(address indexed token, address indexed creator, bytes32 indexed poolId, bytes32 profileHash);
@@ -17,7 +18,7 @@ contract LaunchTest is Test {
 
     function setUp() external {
         b20Factory = new MockB20Factory();
-        factory = new TestableLiqpadFactory(b20Factory);
+        factory = new TestableLiqpadFactory(b20Factory, address(this), address(new MockQuoteSigner()));
     }
 
     function testCreateLaunchMintsFixedSupplyAndStoresProfile() external {
@@ -27,7 +28,7 @@ contract LaunchTest is Test {
         vm.expectEmit(true, true, true, false, address(factory));
         emit Launch(predicted, creator, bytes32(0), bytes32(0));
         vm.prank(creator);
-        address token = factory.createLaunch(params);
+        address token = factory.createLaunch(params, _quote(params, creator), "valid");
 
         assertEq(token, predicted);
         assertEq(MockB20(token).name(), params.name);
@@ -58,7 +59,7 @@ contract LaunchTest is Test {
     function testLaunchLeavesCreatorAndFactoryWithoutPrivilegedRoles() external {
         LiqpadFactory.LaunchParams memory params = _params();
         vm.prank(creator);
-        MockB20 token = MockB20(factory.createLaunch(params));
+        MockB20 token = MockB20(factory.createLaunch(params, _quote(params, creator), "valid"));
 
         bytes32[8] memory roles = [
             bytes32(0),
@@ -80,7 +81,7 @@ contract LaunchTest is Test {
         LiqpadFactory.LaunchParams memory params = _params();
         params.creator = address(0);
         vm.prank(creator);
-        address token = factory.createLaunch(params);
+        address token = factory.createLaunch(params, _quote(params, creator), "valid");
         assertEq(factory.getProfile(token).creator, creator);
     }
 
@@ -88,7 +89,7 @@ contract LaunchTest is Test {
         LiqpadFactory.LaunchParams memory params = _params();
         params.contractURI = "";
         vm.expectRevert(LiqpadFactory.EmptyContractURI.selector);
-        factory.createLaunch(params);
+        factory.createLaunch(params, _quote(params, creator), "valid");
     }
 
     function _params() private view returns (LiqpadFactory.LaunchParams memory) {
@@ -107,6 +108,19 @@ contract LaunchTest is Test {
                 discord: "https://discord.gg/liqpad"
             }),
             creator: creator
+        });
+    }
+
+    function _quote(LiqpadFactory.LaunchParams memory params, address quoteCreator)
+        private
+        view
+        returns (LiqpadFactory.LaunchQuote memory)
+    {
+        return LiqpadFactory.LaunchQuote({
+            quotedFrame: 144_800,
+            validUntil: uint64(block.timestamp + 10 minutes),
+            creator: quoteCreator,
+            launchSalt: params.salt
         });
     }
 }

@@ -7,7 +7,9 @@ import {LiqpadFactory} from "../../src/LiqpadFactory.sol";
 contract TestableLiqpadFactory is LiqpadFactory {
     IB20Factory private immutable _mockFactory;
 
-    constructor(IB20Factory mockFactory_) {
+    constructor(IB20Factory mockFactory_, address quoteAdmin_, address quoteSigner_)
+        LiqpadFactory(quoteAdmin_, quoteSigner_)
+    {
         _mockFactory = mockFactory_;
     }
 
@@ -15,4 +17,3 @@ contract TestableLiqpadFactory is LiqpadFactory {
         return _mockFactory;
     }
 }
-
